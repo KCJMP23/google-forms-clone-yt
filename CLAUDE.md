@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Google Forms clone built with Next.js 14 that uses OneEntry CMS as the backend for storing forms and form submissions. The application allows users to create forms, collect responses, and view analytics on those responses.
+A HIPAA-compliant medical survey system built with Next.js 14 for healthcare organizations. Supports patient surveys, clinical research, provider feedback, patient education, screening assessments, and consent forms. All Protected Health Information (PHI) is encrypted, access is audited, and role-based permissions ensure minimum necessary data access.
 
 ## Commands
 
@@ -20,13 +20,22 @@ npm run lint   # Run ESLint
 
 - **Framework**: Next.js 14.1.0 (App Router, React Server Components)
 - **Language**: TypeScript
-- **Authentication**: Clerk (@clerk/nextjs)
-- **Backend/CMS**: OneEntry (headless CMS for forms and submissions)
+- **Authentication**: Clerk (@clerk/nextjs) - Requires Enterprise/Healthcare plan with BAA
+- **Backend/CMS**: OneEntry (⚠️ VERIFY HIPAA compliance & BAA before production use)
+- **Encryption**: AES-256-GCM for PHI (via Node.js crypto)
 - **State Management**: Zustand (for UI state)
 - **Styling**: Tailwind CSS with shadcn/ui components
 - **UI Components**: Radix UI primitives via shadcn/ui
 - **Charts**: Tremor React
 - **Notifications**: Sonner
+
+### HIPAA Compliance Stack
+
+- **Encryption**: Custom AES-256-GCM implementation (`lib/encryption.ts`)
+- **Audit Logging**: Comprehensive PHI access tracking (`lib/audit.ts`)
+- **Access Control**: Role-Based Access Control (RBAC) system (`lib/rbac.ts`)
+- **De-identification**: HIPAA Safe Harbor & Limited Data Set (`lib/deidentification.ts`)
+- **Type System**: Medical survey types with PHI markers (`lib/definitions.ts`)
 
 ## Architecture
 
@@ -89,35 +98,293 @@ Zustand store in `store/store.ts`:
 
 ## Environment Variables
 
-Required environment variables (create `.env.local`):
+See `.env.example` for complete list. Critical variables:
 
+### Core Services (Require BAA)
 ```bash
-# OneEntry CMS
-NEXT_PUBLIC_API_URL=   # OneEntry API URL
-API_TOKEN=             # OneEntry API token
+# Clerk Authentication (Enterprise/Healthcare plan)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
 
-# Clerk Authentication
-# Follow Clerk setup guide for required variables
+# OneEntry CMS (⚠️ Verify HIPAA compliance)
+NEXT_PUBLIC_API_URL=
+API_TOKEN=
+
+# Database (HIPAA-compliant with encryption)
+DATABASE_URL=postgresql://...
 ```
+
+### Encryption & Security
+```bash
+# Generate key: node -e "require('./lib/encryption').generateEncryptionKey()"
+# PRODUCTION: Use AWS KMS or Azure Key Vault instead!
+ENCRYPTION_KEY_BASE64=
+ENCRYPTION_KEY_ID=key-v1
+
+# Audit logging
+ENABLE_AUDIT_LOGGING=true
+AUDIT_LOG_RETENTION_DAYS=2190  # 6 years minimum
+
+# Session management
+SESSION_TIMEOUT_MINUTES=15
+REQUIRE_MFA_FOR_ROLES=system_admin,compliance_officer,physician
+```
+
+### HIPAA Compliance
+```bash
+# Required designations
+HIPAA_SECURITY_OFFICER_EMAIL=security@example.com
+HIPAA_PRIVACY_OFFICER_EMAIL=privacy@example.com
+BREACH_NOTIFICATION_EMAIL=breach@example.com
+
+# Organization
+ORGANIZATION_NAME=Medical Organization
+ORGANIZATION_NPI=1234567890
+```
+
+**Setup Instructions:**
+1. Copy `.env.example` to `.env.local`
+2. Generate encryption key (development): `node -e "require('./lib/encryption').generateEncryptionKey()"`
+3. Configure all third-party services with BAAs
+4. Never commit `.env.local` to version control
+5. In production, use KMS/Key Vault for keys (not env vars)
 
 ## Key Files
 
+### Core Application
 - `middleware.ts` - Clerk auth middleware, protects dashboard routes
 - `oneentry.ts` - OneEntry API client initialization
 - `lib/data.ts` - Server-side data fetching functions
 - `lib/actions.ts` - Server Actions for mutations
-- `lib/definitions.ts` - Type definitions and mappings
+
+### HIPAA Compliance Layer
+- `lib/definitions.ts` - Type definitions including medical survey types, user roles, PHI identifiers
+- `lib/encryption.ts` - AES-256-GCM encryption/decryption for PHI
+- `lib/audit.ts` - Audit logging for all PHI access (HIPAA §164.312(b))
+- `lib/rbac.ts` - Role-Based Access Control with granular permissions
+- `lib/deidentification.ts` - De-identification utilities (Safe Harbor, Limited Data Set)
+
+### Configuration
+- `.env.example` - Complete environment variable template with HIPAA settings
+- `HIPAA_COMPLIANCE_PLAN.md` - Comprehensive compliance implementation guide
 - `store/store.ts` - Zustand state management
+
+## HIPAA Compliance Architecture
+
+### Survey Categories & Data Classification
+
+Surveys are categorized by use case:
+- **Patient Satisfaction**: Patient feedback surveys
+- **Clinical Research**: IRB-approved research studies
+- **Provider Feedback**: Provider performance evaluations
+- **Patient Education**: Educational assessments
+- **Screening Assessment**: Health screening questionnaires
+- **Consent Forms**: Digital consent with e-signatures
+- **Intake Forms**: New patient intake
+- **Follow-up**: Post-visit follow-ups
+
+Each survey has a `dataClassification`:
+- **PHI**: Contains Protected Health Information (encrypted, audited)
+- **De-identified**: PHI removed per §164.514 (Safe Harbor method)
+- **Anonymous**: No identifiers collected
+- **Limited Data Set**: Subset of PHI for research (requires DUA)
+
+### User Roles & Permissions
+
+RBAC system with 9 roles (`lib/rbac.ts`):
+- **System Admin**: Full system access, user management
+- **Compliance Officer**: Audit logs, security review, breach investigation
+- **Physician**: Create surveys, view patient PHI, break-glass access
+- **Provider**: View assigned patient responses
+- **Research Coordinator**: Create research surveys, export de-identified data
+- **Clinical Staff**: Administer surveys, limited PHI access
+- **Patient**: View own responses only, submit surveys
+- **Auditor**: Read-only audit log access
+- **Guest**: Minimal access
+
+### PHI Encryption Flow
+
+1. **Survey Creation**: Fields marked with `isPHI: true` and `phiType` (name, MRN, DOB, etc.)
+2. **Response Submission**: PHI fields encrypted with AES-256-GCM before storage
+3. **Response Viewing**: Decrypted only for authorized users, access logged
+4. **Data Export**: Can export as PHI (encrypted) or de-identified
+
+Encryption utilities in `lib/encryption.ts`:
+```typescript
+const encrypted = await encrypt(patientName); // Returns EncryptedData
+const decrypted = await decrypt(encrypted);
+```
+
+### Audit Logging
+
+All PHI access is logged per HIPAA §164.312(b) (`lib/audit.ts`):
+- User ID, role, timestamp
+- Action (view, create, edit, delete, export)
+- Resource accessed (survey, response)
+- PHI fields accessed
+- IP address, user agent, session ID
+- Changes made (before/after for edits)
+- Success/failure status
+
+Common audit functions:
+```typescript
+await auditPHIAccess('survey_response', responseId, ['name', 'mrn']);
+await auditResponseSubmission(surveyId, responseId, containsPHI);
+await auditDataExport('survey_responses', recordCount, containsPHI);
+```
+
+### De-identification
+
+Two methods supported (`lib/deidentification.ts`):
+
+1. **Safe Harbor** (§164.514(b)(2)): Removes 18 HIPAA identifiers
+   - Names, geographic subdivisions, dates, contact info, IDs
+   - Ages over 89 aggregated to "90+"
+   - ZIP codes truncated to first 3 digits
+
+2. **Limited Data Set** (§164.514(e)): Retains dates and location
+   - Requires Data Use Agreement (DUA)
+   - For research purposes only
+
+```typescript
+const deidentified = await deidentifyResponse(response, config);
+const lds = await createLimitedDataSet(response);
+```
+
+### Access Control Checks
+
+Before accessing any PHI:
+```typescript
+// Check user permission
+await requirePermission(Permission.VIEW_PHI);
+
+// Check survey access
+const canAccess = await canAccessSurvey(survey);
+
+// Check response access
+const canView = await canAccessResponse(response, survey);
+
+// Access PHI with audit logging
+await accessPHI('survey_response', responseId, phiFields, async () => {
+  // Access logic here
+});
+```
+
+### Session Management
+
+- **Role-based timeouts**: Admin (10 min), Provider (15 min), Patient (30 min)
+- **Auto-logout**: After inactivity period
+- **MFA required**: System Admin, Compliance Officer, Physician roles
+- **Session tracking**: All sessions logged with activity timestamps
+
+### Data Retention
+
+Configurable retention by survey category:
+- Patient Satisfaction: 7 years
+- Clinical Research: 10 years
+- Consent Forms: Permanent
+- Others: 6 years minimum
+
+### Security Features
+
+- **Encryption at rest**: All PHI fields encrypted in database
+- **Encryption in transit**: TLS 1.3 required
+- **Audit logging**: All PHI access logged (6-year retention)
+- **Break-glass access**: Emergency access with required justification
+- **Rate limiting**: Protection against brute force attacks
+- **Breach detection**: Automatic alerts for suspicious activity
 
 ## Development Notes
 
-### Working with Forms
+### HIPAA Development Practices
 
-Forms are managed entirely through OneEntry CMS:
-1. Forms are created/configured in OneEntry
-2. The app fetches form schemas via `fetchFormById()`
-3. Form attributes are mapped to input types via `attributeTypeToInputType`
-4. Submissions are posted via `addFormData()` Server Action
+**CRITICAL SECURITY RULES:**
+1. **Never commit** encryption keys, API tokens, or secrets to git
+2. **Always use audit logging** when accessing PHI
+3. **Mark PHI fields** with `isPHI: true` in survey definitions
+4. **Encrypt before storing** any PHI data
+5. **Check permissions** before data access
+6. **Use proper error handling** - don't leak PHI in error messages
+
+**Testing with PHI:**
+- Use synthetic/fake data only in development
+- Never use real patient data in non-production environments
+- Clear test data regularly
+- Use `.env.local` (gitignored) for local config
+
+**Audit Logging Requirements:**
+- Log ALL access to PHI (views, edits, exports)
+- Log authentication events (login, logout, failures)
+- Log administrative actions (user creation, role changes)
+- Log consent grants/withdrawals
+- Log data de-identification operations
+
+### Working with Medical Surveys
+
+**Creating a HIPAA-compliant survey:**
+
+1. Define survey metadata:
+   ```typescript
+   const survey: MedicalSurvey = {
+     category: SurveyCategory.PATIENT_SATISFACTION,
+     dataClassification: DataClassification.PHI,
+     containsPHI: true,
+     consentRequired: true,
+     retentionPeriodDays: 2555, // 7 years
+     allowedRoles: [UserRole.PHYSICIAN, UserRole.CLINICAL_STAFF],
+     fields: [/* survey fields */]
+   };
+   ```
+
+2. Mark PHI fields:
+   ```typescript
+   const field: SurveyField = {
+     marker: 'patient_name',
+     label: 'Patient Name',
+     type: 'text',
+     required: true,
+     isPHI: true, // ← Mark as PHI
+     phiType: PHIIdentifierType.NAME
+   };
+   ```
+
+3. Handle responses with encryption:
+   ```typescript
+   // Submission (in Server Action)
+   const response: MedicalSurveyResponse = {
+     surveyId,
+     responses: await encryptPHIFields(formData),
+     containsPHI: true,
+     dataClassification: DataClassification.PHI
+   };
+
+   await auditResponseSubmission(surveyId, response.id, true);
+   ```
+
+4. View responses with proper access control:
+   ```typescript
+   // Check permissions first
+   await requirePermission(Permission.VIEW_PHI);
+
+   // Check specific access
+   if (!await canAccessResponse(response, survey)) {
+     throw new Error('Access denied');
+   }
+
+   // Access with audit
+   await accessPHI('survey_response', response.id, phiFields, async () => {
+     // Decrypt and display
+     const decrypted = await decryptFields(response.responses, phiFields);
+     return decrypted;
+   });
+   ```
+
+**Forms via OneEntry CMS:**
+- Forms can still be created/configured in OneEntry (if HIPAA-compliant)
+- App fetches form schemas via `fetchFormById()`
+- Form attributes mapped to input types via `attributeTypeToInputType`
+- Submissions go through encryption layer before storage
+- **CRITICAL**: Verify OneEntry provides BAA before using with real PHI
 
 ### Adding New Components
 
@@ -142,3 +409,50 @@ Components will be added to `components/ui/` based on `components.json` config.
 - Global styles in `app/globals.css`
 - Uses CSS variables for theming (shadcn/ui default)
 - Import path aliases: `@/components`, `@/lib`
+
+## Production Readiness Checklist
+
+Before deploying with real PHI:
+
+### Legal & Administrative
+- [ ] Business Associate Agreements (BAAs) obtained from all vendors
+- [ ] HIPAA Security Officer designated
+- [ ] HIPAA Privacy Officer designated
+- [ ] Risk assessment completed
+- [ ] Policies and procedures documented
+- [ ] Staff HIPAA training completed
+- [ ] Incident response plan documented
+- [ ] Breach notification procedures established
+
+### Technical Security
+- [ ] Encryption keys migrated to KMS/Key Vault (not env vars)
+- [ ] Audit logging configured and tested
+- [ ] Database encryption at rest enabled
+- [ ] TLS 1.3 configured for all connections
+- [ ] MFA enabled for privileged roles
+- [ ] Session timeouts configured
+- [ ] Rate limiting enabled
+- [ ] Security monitoring configured
+- [ ] Automated backups with encryption
+- [ ] Penetration testing completed
+- [ ] Vulnerability scanning implemented
+
+### Third-Party Services
+- [ ] Clerk Enterprise/Healthcare plan with BAA
+- [ ] OneEntry CMS HIPAA compliance verified OR migrated to alternative
+- [ ] Hosting platform BAA obtained (Vercel Enterprise, AWS, or Azure)
+- [ ] Email service BAA obtained
+- [ ] File storage encryption configured
+- [ ] All services reviewed for HIPAA compliance
+
+### Data Management
+- [ ] Data retention policies configured
+- [ ] Secure deletion procedures tested
+- [ ] De-identification tools tested
+- [ ] Data export controls implemented
+- [ ] Backup and recovery tested
+
+### References
+- See `HIPAA_COMPLIANCE_PLAN.md` for detailed implementation guide
+- See `.env.example` for complete configuration options
+- HIPAA regulations: https://www.hhs.gov/hipaa/
