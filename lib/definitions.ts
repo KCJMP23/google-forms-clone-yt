@@ -158,9 +158,12 @@ export enum SurveyStatus {
 export enum ConsentType {
   SURVEY_PARTICIPATION = 'survey_participation',
   RESEARCH_PARTICIPATION = 'research_participation',
+  RESEARCH = 'research', // Alias for research_participation
   DATA_SHARING = 'data_sharing',
   TREATMENT = 'treatment',
   PARENTAL_CONSENT = 'parental_consent',
+  MARKETING = 'marketing',
+  THIRD_PARTY_DISCLOSURE = 'third_party_disclosure',
 }
 
 /**
@@ -217,16 +220,21 @@ export interface SurveyField {
  */
 export enum PHIIdentifierType {
   NAME = 'name',
+  ADDRESS = 'address', // Alias for geographic_subdivision
   GEOGRAPHIC_SUBDIVISION = 'geographic_subdivision', // Smaller than state
   DATES = 'dates', // Birth, admission, discharge, death, age > 89
+  DATE_OF_BIRTH = 'date_of_birth', // Specific date identifier
   PHONE = 'phone',
   FAX = 'fax',
   EMAIL = 'email',
   SSN = 'ssn',
   MRN = 'mrn', // Medical record number
+  MEDICAL_RECORD = 'medical_record', // Alias for MRN
   HEALTH_PLAN_NUMBER = 'health_plan_number',
+  HEALTH_PLAN = 'health_plan', // Alias for health_plan_number
   ACCOUNT_NUMBER = 'account_number',
   CERTIFICATE_NUMBER = 'certificate_number',
+  CERTIFICATE_LICENSE = 'certificate_license', // Alias for certificate_number
   VEHICLE_IDENTIFIER = 'vehicle_identifier',
   DEVICE_IDENTIFIER = 'device_identifier',
   URL = 'url',

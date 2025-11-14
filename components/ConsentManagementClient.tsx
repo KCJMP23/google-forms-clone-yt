@@ -77,9 +77,12 @@ const MOCK_CONSENTS = [
 const CONSENT_TYPE_LABELS: Record<ConsentType, string> = {
   [ConsentType.TREATMENT]: "Treatment & Care",
   [ConsentType.RESEARCH]: "Research Participation",
+  [ConsentType.RESEARCH_PARTICIPATION]: "Research Participation",
+  [ConsentType.SURVEY_PARTICIPATION]: "Survey Participation",
   [ConsentType.DATA_SHARING]: "Data Sharing",
   [ConsentType.MARKETING]: "Marketing Communications",
   [ConsentType.THIRD_PARTY_DISCLOSURE]: "Third-Party Disclosure",
+  [ConsentType.PARENTAL_CONSENT]: "Parental Consent",
 };
 
 function getStatusBadge(status: string) {
