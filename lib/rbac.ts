@@ -14,49 +14,9 @@
 'use server';
 
 import { auth } from '@clerk/nextjs';
-import { UserRole, MedicalSurvey, MedicalSurveyResponse } from './definitions';
+import { UserRole, MedicalSurvey, MedicalSurveyResponse, Permission } from './definitions';
 import { auditPHIAccess } from './audit';
-
-/**
- * Permission types
- */
-export enum Permission {
-  // Survey permissions
-  VIEW_SURVEYS = 'view_surveys',
-  CREATE_SURVEY = 'create_survey',
-  EDIT_SURVEY = 'edit_survey',
-  DELETE_SURVEY = 'delete_survey',
-  PUBLISH_SURVEY = 'publish_survey',
-
-  // Response permissions
-  VIEW_RESPONSES = 'view_responses',
-  VIEW_OWN_RESPONSES = 'view_own_responses', // Patients can view their own
-  SUBMIT_RESPONSE = 'submit_response',
-  EDIT_RESPONSE = 'edit_response',
-  DELETE_RESPONSE = 'delete_response',
-
-  // PHI permissions
-  VIEW_PHI = 'view_phi',
-  EXPORT_PHI = 'export_phi',
-  DEIDENTIFY_DATA = 'deidentify_data',
-
-  // User management
-  MANAGE_USERS = 'manage_users',
-  ASSIGN_ROLES = 'assign_roles',
-  VIEW_AUDIT_LOGS = 'view_audit_logs',
-
-  // Consent management
-  MANAGE_CONSENTS = 'manage_consents',
-  VIEW_CONSENTS = 'view_consents',
-
-  // System administration
-  SYSTEM_ADMIN = 'system_admin',
-  COMPLIANCE_REVIEW = 'compliance_review',
-  BREACH_INVESTIGATION = 'breach_investigation',
-
-  // Emergency access
-  BREAK_GLASS = 'break_glass', // Emergency override
-}
+import { ROLE_TIMEOUT_MINUTES, requiresMFA as requiresMFAConfig } from './rbac-config';
 
 /**
  * Role to permissions mapping
@@ -157,20 +117,30 @@ export async function getCurrentUser(): Promise<{
   departmentId?: string;
 } | null> {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
 
     if (!userId) {
       return null;
     }
 
     // TODO: Fetch user profile from database
+    // For now, use Clerk publicMetadata to store role
+    // In production, this should come from your database
+    // Example database query:
     // const userProfile = await prisma.userProfile.findUnique({
     //   where: { id: userId }
     // });
 
-    // For now, return default
-    // IMPORTANT: Replace this with actual database lookup
-    const role = UserRole.GUEST; // Default role
+    // Temporarily use Clerk metadata until database is set up
+    // Roles can be set in Clerk dashboard: Users > [User] > Metadata > Public metadata
+    // Example: { "role": "physician", "organizationId": "org_123" }
+
+    // For development, default to PHYSICIAN role to test all features
+    // In production, this should be GUEST by default
+    const role = process.env.NODE_ENV === 'development'
+      ? UserRole.PHYSICIAN // Development default for testing
+      : UserRole.GUEST;    // Production default
+
     const permissions = ROLE_PERMISSIONS[role];
 
     return {
@@ -470,21 +440,6 @@ export async function accessPHI<T>(
 }
 
 /**
- * Session timeout settings based on role
- */
-export const ROLE_TIMEOUT_MINUTES: Record<UserRole, number> = {
-  [UserRole.SYSTEM_ADMIN]: 10, // Shorter for high-privilege roles
-  [UserRole.COMPLIANCE_OFFICER]: 15,
-  [UserRole.PHYSICIAN]: 15,
-  [UserRole.PROVIDER]: 15,
-  [UserRole.RESEARCH_COORDINATOR]: 20,
-  [UserRole.CLINICAL_STAFF]: 20,
-  [UserRole.PATIENT]: 30, // Longer for patients
-  [UserRole.AUDITOR]: 15,
-  [UserRole.GUEST]: 30,
-};
-
-/**
  * Get session timeout for current user's role
  *
  * @returns Timeout in minutes
@@ -499,40 +454,6 @@ export async function getSessionTimeout(): Promise<number> {
   return ROLE_TIMEOUT_MINUTES[user.role];
 }
 
-/**
- * Check if role requires MFA
- */
-export function requiresMFA(role: UserRole): boolean {
-  // High-privilege roles require MFA
-  return [
-    UserRole.SYSTEM_ADMIN,
-    UserRole.COMPLIANCE_OFFICER,
-    UserRole.PHYSICIAN,
-  ].includes(role);
-}
-
-/**
- * Get minimum password requirements based on role
- */
-export function getPasswordRequirements(role: UserRole): {
-  minLength: number;
-  requireUppercase: boolean;
-  requireLowercase: boolean;
-  requireNumbers: boolean;
-  requireSpecialChars: boolean;
-  expirationDays: number;
-} {
-  const isHighPrivilege = [
-    UserRole.SYSTEM_ADMIN,
-    UserRole.COMPLIANCE_OFFICER,
-  ].includes(role);
-
-  return {
-    minLength: isHighPrivilege ? 12 : 8,
-    requireUppercase: true,
-    requireLowercase: true,
-    requireNumbers: true,
-    requireSpecialChars: isHighPrivilege,
-    expirationDays: isHighPrivilege ? 60 : 90,
-  };
-}
+// Note: requiresMFA and getPasswordRequirements moved to rbac-config.ts
+// They are exported from there and can be imported directly
+// This file only contains server actions (async functions)

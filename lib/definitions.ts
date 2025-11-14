@@ -78,6 +78,47 @@ export enum UserRole {
 }
 
 /**
+ * Permission types for Role-Based Access Control
+ */
+export enum Permission {
+  // Survey permissions
+  VIEW_SURVEYS = 'view_surveys',
+  CREATE_SURVEY = 'create_survey',
+  EDIT_SURVEY = 'edit_survey',
+  DELETE_SURVEY = 'delete_survey',
+  PUBLISH_SURVEY = 'publish_survey',
+
+  // Response permissions
+  VIEW_RESPONSES = 'view_responses',
+  VIEW_OWN_RESPONSES = 'view_own_responses', // Patients can view their own
+  SUBMIT_RESPONSE = 'submit_response',
+  EDIT_RESPONSE = 'edit_response',
+  DELETE_RESPONSE = 'delete_response',
+
+  // PHI permissions
+  VIEW_PHI = 'view_phi',
+  EXPORT_PHI = 'export_phi',
+  DEIDENTIFY_DATA = 'deidentify_data',
+
+  // User management
+  MANAGE_USERS = 'manage_users',
+  ASSIGN_ROLES = 'assign_roles',
+  VIEW_AUDIT_LOGS = 'view_audit_logs',
+
+  // Consent management
+  MANAGE_CONSENTS = 'manage_consents',
+  VIEW_CONSENTS = 'view_consents',
+
+  // System administration
+  SYSTEM_ADMIN = 'system_admin',
+  COMPLIANCE_REVIEW = 'compliance_review',
+  BREACH_INVESTIGATION = 'breach_investigation',
+
+  // Emergency access
+  BREAK_GLASS = 'break_glass', // Emergency override
+}
+
+/**
  * Audit action types for logging
  */
 export enum AuditAction {
