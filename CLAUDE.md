@@ -6,6 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A HIPAA-compliant medical survey system built with Next.js 14 for healthcare organizations. Supports patient surveys, clinical research, provider feedback, patient education, screening assessments, and consent forms. All Protected Health Information (PHI) is encrypted, access is audited, and role-based permissions ensure minimum necessary data access.
 
+## Quick Start
+
+**New to this project?** See `QUICK_START.md` for step-by-step deployment instructions.
+
+**Deploy to GCP:**
+```bash
+./scripts/setup-gcp.sh       # One-time infrastructure setup (~15 min)
+./scripts/deploy-cloud-run.sh  # Deploy application (~5-10 min)
+```
+
 ## Commands
 
 ### Development
@@ -14,6 +24,15 @@ npm run dev    # Start development server on http://localhost:3000
 npm run build  # Build for production
 npm start      # Start production server
 npm run lint   # Run ESLint
+```
+
+### GCP Deployment (Automated)
+```bash
+./scripts/setup-gcp.sh       # Create GCP infrastructure (Cloud KMS, Cloud SQL, Cloud Storage, BigQuery)
+./scripts/deploy-cloud-run.sh  # Build and deploy to Cloud Run
+
+# Generate encryption key (development only)
+node -e "require('./lib/encryption').generateEncryptionKey()"
 ```
 
 ## Tech Stack
@@ -96,6 +115,35 @@ Zustand store in `store/store.ts`:
 - **components/ui/** - shadcn/ui primitives (button, dialog, tabs, etc.)
 - shadcn/ui configuration in `components.json`
 
+### Frontend Pages
+
+The application has a complete Next.js frontend with these main pages:
+
+**Public Pages:**
+- `/` - Landing page with features overview
+- `/forms/[id]` - Public form submission page (MainForm component)
+- `/forms/[id]/success` - Form submission success page
+
+**Protected Pages (require authentication via Clerk):**
+- `/dashboard/forms` - Recent forms list (RecentForms component)
+- `/dashboard/forms/[id]` - Form editor view (read-only, shows Questions tab)
+- `/dashboard/forms/[id]/responses` - Response analytics with bar charts (BarChartComponent)
+
+**Key Frontend Components:**
+- `MainForm.tsx` - Dynamic form renderer (renders forms from OneEntry schema, handles submission)
+- `FormCard.tsx` - Form preview card in dashboard
+- `RecentForms.tsx` - Grid of recent forms
+- `BarChartComponent.tsx` - Tremor React charts for response visualization
+- `Header.tsx` - Dashboard header with search
+- `FormTabs.tsx` - Questions/Responses tab switcher
+- `SubmitButton.tsx` - Form submit with loading state
+
+**Form Rendering Logic:**
+- Forms are defined in OneEntry CMS
+- `MainForm` fetches form schema and dynamically renders fields
+- `attributeTypeToInputType` maps CMS field types to HTML input types
+- Form submission handled via Server Actions (`addFormData` in `lib/actions.ts`)
+
 ## Environment Variables
 
 See `.env.example` for complete list. Critical variables:
@@ -164,10 +212,32 @@ ORGANIZATION_NPI=1234567890
 - `lib/rbac.ts` - Role-Based Access Control with granular permissions
 - `lib/deidentification.ts` - De-identification utilities (Safe Harbor, Limited Data Set)
 
-### Configuration
+### Configuration & Deployment
 - `.env.example` - Complete environment variable template with HIPAA settings
 - `HIPAA_COMPLIANCE_PLAN.md` - Comprehensive compliance implementation guide
+- `GCP_DEPLOYMENT_GUIDE.md` - Detailed manual deployment guide for GCP
+- `QUICK_START.md` - Step-by-step quick start guide for new users
 - `store/store.ts` - Zustand state management
+
+### Deployment Automation
+- `scripts/setup-gcp.sh` - Automated GCP infrastructure setup (Cloud KMS, Cloud SQL, Cloud Storage, BigQuery)
+- `scripts/deploy-cloud-run.sh` - Automated Cloud Run deployment
+- `scripts/README.md` - Complete documentation for deployment scripts
+
+**Setup Script Features:**
+- Interactive prompts for configuration
+- Creates all HIPAA-compliant GCP resources
+- Generates secure passwords and stores in Secret Manager
+- Configures encryption keys with 90-day rotation
+- Sets up audit logging with 6-year retention
+- Outputs configuration file (`gcp-config.env`)
+
+**Deploy Script Features:**
+- Builds Docker image via Cloud Build
+- Deploys to Cloud Run with auto-scaling
+- Configures environment variables and secrets
+- Sets up Cloud SQL connection
+- Provides live application URL
 
 ## HIPAA Compliance Architecture
 
@@ -385,6 +455,26 @@ Configurable retention by survey category:
 - Form attributes mapped to input types via `attributeTypeToInputType`
 - Submissions go through encryption layer before storage
 - **CRITICAL**: Verify OneEntry provides BAA before using with real PHI
+
+### HIPAA UI Components (To Be Implemented)
+
+The backend HIPAA compliance logic is complete, but these UI components need to be added:
+
+**Missing Components:**
+1. **Consent Management UI** - Digital consent forms with e-signature before survey access
+2. **PHI Field Indicators** - Visual markers (🔒) on fields containing PHI
+3. **Audit Log Viewer** - Dashboard page for compliance officers to view PHI access logs
+4. **Session Timeout Warning** - Modal showing countdown before auto-logout
+5. **Research Export Dialog** - UI for exporting de-identified or limited data sets
+6. **Break-Glass Access Modal** - Emergency access form requiring justification
+7. **Role-Based Navigation** - Show/hide UI elements based on user role
+8. **User Profile Settings** - MFA setup, session timeout preferences
+9. **IRB Approval Tracker** - For research surveys requiring IRB approval
+
+**Implementation Priority:**
+- High: Consent Management, PHI Indicators, Session Timeout
+- Medium: Audit Log Viewer, Role-Based Navigation
+- Low: Research Export Dialog, Break-Glass Modal (specialty features)
 
 ### Adding New Components
 
