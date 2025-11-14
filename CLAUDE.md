@@ -410,6 +410,49 @@ Components will be added to `components/ui/` based on `components.json` config.
 - Uses CSS variables for theming (shadcn/ui default)
 - Import path aliases: `@/components`, `@/lib`
 
+## GCP Infrastructure (BAA Since 2017)
+
+This system is designed to deploy on **Google Cloud Platform (GCP)**, where your organization has a Business Associate Agreement since 2017. All GCP services used are HIPAA-compliant and covered under your existing BAA.
+
+### GCP Services Used
+
+- **Cloud Run**: Serverless application hosting
+- **Cloud SQL (PostgreSQL)**: Encrypted database for surveys and responses
+- **Cloud Storage**: File storage with customer-managed encryption keys (CMEK)
+- **Cloud KMS**: Encryption key management with 90-day rotation
+- **Cloud Logging + BigQuery**: Audit log collection and 6-year retention
+- **Secret Manager**: Secure credential storage
+- **Cloud Armor**: DDoS protection and web application firewall
+- **VPC**: Network isolation and private connectivity
+
+### Research & Quality Improvement
+
+This system specifically supports:
+
+**Research Data Collection**:
+- IRB approval tracking and management
+- Research participant consent workflows
+- Limited Data Set exports for research use
+- Date shifting for longitudinal research data
+- Data Use Agreement (DUA) management
+- Integration with REDCap and other research platforms
+
+**Quality Improvement (QI) Projects**:
+- QI projects may not require patient consent per 45 CFR 46
+- De-identified or limited data set classification options
+- Quality metrics tracking and reporting
+- Provider performance evaluation surveys
+- Patient satisfaction measurement
+- Process improvement data collection
+
+### Deployment Options
+
+1. **Cloud Run** (Recommended): Serverless, auto-scaling, fully managed
+2. **GKE (Kubernetes)**: For complex deployments with multiple services
+3. **App Engine**: Fully managed platform with less configuration
+
+See `GCP_DEPLOYMENT_GUIDE.md` for complete step-by-step deployment instructions.
+
 ## Production Readiness Checklist
 
 Before deploying with real PHI:
@@ -438,12 +481,22 @@ Before deploying with real PHI:
 - [ ] Vulnerability scanning implemented
 
 ### Third-Party Services
+- [x] GCP BAA verified (in place since 2017)
 - [ ] Clerk Enterprise/Healthcare plan with BAA
-- [ ] OneEntry CMS HIPAA compliance verified OR migrated to alternative
-- [ ] Hosting platform BAA obtained (Vercel Enterprise, AWS, or Azure)
-- [ ] Email service BAA obtained
-- [ ] File storage encryption configured
+- [ ] OneEntry CMS HIPAA compliance verified OR migrated to GCP Firestore
+- [ ] Email service BAA obtained (or using GCP partner)
 - [ ] All services reviewed for HIPAA compliance
+
+### GCP-Specific Requirements
+- [ ] Cloud KMS configured for encryption key management
+- [ ] Cloud SQL with customer-managed encryption keys (CMEK)
+- [ ] Cloud Storage with uniform bucket-level access
+- [ ] Cloud Logging + BigQuery for 6-year audit retention
+- [ ] VPC Service Controls enabled for data perimeter
+- [ ] Cloud Armor configured for DDoS protection
+- [ ] Secret Manager used for all sensitive credentials
+- [ ] IAM roles configured with least privilege
+- [ ] Organization policies enforced
 
 ### Data Management
 - [ ] Data retention policies configured
@@ -453,6 +506,8 @@ Before deploying with real PHI:
 - [ ] Backup and recovery tested
 
 ### References
+- See `GCP_DEPLOYMENT_GUIDE.md` for complete GCP deployment instructions
 - See `HIPAA_COMPLIANCE_PLAN.md` for detailed implementation guide
 - See `.env.example` for complete configuration options
+- GCP HIPAA Compliance: https://cloud.google.com/security/compliance/hipaa
 - HIPAA regulations: https://www.hhs.gov/hipaa/
