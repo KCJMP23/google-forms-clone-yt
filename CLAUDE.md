@@ -103,11 +103,31 @@ See `docs/CLERK_ROLE_SETUP.md` for all 9 role types and programmatic setup.
 
 ## Architecture
 
+### Critical Architecture Pattern: Dual-Access Model
+
+This platform has a **dual-access model** that is fundamental to understanding the codebase:
+
+1. **Public Form Submission** (`/forms/[id]`):
+   - NO authentication required
+   - Anonymous survey responses
+   - PHI encryption happens automatically if form contains PHI fields
+   - Anyone with the link can submit
+   - No HIPAA messaging shown to respondents
+
+2. **Dashboard (Admin Area)** (`/dashboard/*`):
+   - Authentication required (Clerk)
+   - Role-based access control (9 roles)
+   - View responses, manage forms, audit logs, consents
+   - All PHI access is logged per HIPAA §164.312(b)
+   - HIPAA compliance features visible
+
+This separation is enforced in `middleware.ts:8` where all routes are public EXCEPT `/dashboard/*`.
+
 ### Route Structure
 
 The app uses Next.js 14 App Router with route groups:
 
-- **(home)/** - Public landing page
+- **(home)/** - Public landing page (no HIPAA branding)
 - **(auth)/** - Clerk authentication pages (`/sign-in`, `/sign-up`)
 - **dashboard/** - Protected area for managing forms
   - `dashboard/forms/[id]` - Edit form and view responses
@@ -147,6 +167,17 @@ Authentication is handled by Clerk via `middleware.ts`:
 - `attributeTypeToInputType` - Maps OneEntry attribute types to HTML input types
 - This mapping determines how form fields are rendered based on CMS configuration
 - Key types: `FormDataItem`, `IndividualResponse`, `AttributeCount`
+
+### Form Schema Translation
+
+Forms created in OneEntry CMS are dynamically rendered by mapping CMS attributes to HTML inputs:
+
+- `lib/definitions.ts` contains `attributeTypeToInputType` mapping
+- Example: OneEntry `textbox` → HTML `<input type="text">`
+- PHI detection: Fields are automatically flagged as PHI based on name patterns (see `lib/phi-detection.ts`)
+- This allows non-technical users to create HIPAA-compliant forms in the CMS without coding
+- `MainForm.tsx` component handles dynamic rendering from OneEntry schema
+- Form submission handled via Server Actions (`addFormData` in `lib/actions.ts`)
 
 ### State Management
 
@@ -191,6 +222,15 @@ The application has a complete Next.js frontend with these main pages:
 - `MainForm` fetches form schema and dynamically renders fields
 - `attributeTypeToInputType` maps CMS field types to HTML input types
 - Form submission handled via Server Actions (`addFormData` in `lib/actions.ts`)
+
+### API Routes
+
+- **`/api/user/role`** - Returns current user's role and permissions
+  - Method: GET
+  - Authentication: Required (Clerk session)
+  - Response: `{ userId: string, role: UserRole, permissions: Permission[] }`
+  - Used by: RBAC hooks (`use-user-role.ts`, `use-permissions.ts`)
+  - Implementation: `app/api/user/role/route.ts`
 
 ## Environment Variables
 
