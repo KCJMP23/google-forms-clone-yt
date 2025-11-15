@@ -4,17 +4,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A HIPAA-compliant medical survey system built with Next.js 14 for healthcare organizations. Supports patient surveys, clinical research, provider feedback, patient education, screening assessments, and consent forms. All Protected Health Information (PHI) is encrypted, access is audited, and role-based permissions ensure minimum necessary data access.
+An **anonymous research survey platform** (Google Forms-style) built with Next.js 14, with HIPAA compliance as a defensive measure in case PHI is accidentally captured. Designed for healthcare organizations conducting clinical research, quality improvement projects, patient satisfaction surveys, and provider feedback collection.
+
+**Key Characteristics:**
+- **Primary Use:** Anonymous data collection (no login required for surveys)
+- **HIPAA Compliance:** Defensive measure for accidental PHI capture
+- **Smart PHI Detection:** Automatically identifies and protects sensitive fields
+- **Research-Focused:** De-identification tools (Safe Harbor, Limited Data Set)
+- **Regulatory Ready:** Full audit logging, encryption, role-based access
+
+All Protected Health Information (PHI) is encrypted with AES-256-GCM, access is comprehensively audited, and role-based permissions ensure minimum necessary data access per HIPAA §164.502(b).
 
 ## Quick Start
 
-**New to this project?** See `QUICK_START.md` for step-by-step deployment instructions.
+**New to this project?** See `SETUP_GUIDE.md` ⭐ for complete production setup instructions.
 
-**Deploy to GCP:**
+**Quick Testing (Development):**
+```bash
+cp .env.example .env.local   # Copy environment template
+# Add Clerk keys to .env.local
+npm run dev                  # Start dev server
+./scripts/test-user-flows.sh # Run automated tests
+```
+
+**Deploy to GCP (Production):**
 ```bash
 ./scripts/setup-gcp.sh       # One-time infrastructure setup (~15 min)
 ./scripts/deploy-cloud-run.sh  # Deploy application (~5-10 min)
 ```
+
+**Documentation Quick Links:**
+- `SETUP_GUIDE.md` - Main setup guide (START HERE)
+- `docs/CLERK_ROLE_SETUP.md` - Configure user roles
+- `docs/DEPLOYMENT_CHECKLIST.md` - Pre-launch checklist
+- `docs/README.md` - Documentation hub
 
 ## Commands
 
@@ -26,14 +49,36 @@ npm start      # Start production server
 npm run lint   # Run ESLint
 ```
 
+### Testing
+```bash
+./scripts/test-user-flows.sh  # Run automated tests (checks all HIPAA components)
+npx tsc --noEmit              # Type checking without build
+```
+
 ### GCP Deployment (Automated)
 ```bash
 ./scripts/setup-gcp.sh       # Create GCP infrastructure (Cloud KMS, Cloud SQL, Cloud Storage, BigQuery)
 ./scripts/deploy-cloud-run.sh  # Build and deploy to Cloud Run
+```
 
+### Clerk Role Configuration
+```bash
 # Generate encryption key (development only)
 node -e "require('./lib/encryption').generateEncryptionKey()"
 ```
+
+**Set user roles in Clerk Dashboard:**
+1. Go to https://dashboard.clerk.com → Users
+2. Select user → Public Metadata → Edit
+3. Add role configuration:
+```json
+{
+  "role": "research_coordinator",
+  "organizationId": "org_medical_research"
+}
+```
+
+See `docs/CLERK_ROLE_SETUP.md` for all 9 role types and programmatic setup.
 
 ## Tech Stack
 
@@ -128,6 +173,9 @@ The application has a complete Next.js frontend with these main pages:
 - `/dashboard/forms` - Recent forms list (RecentForms component)
 - `/dashboard/forms/[id]` - Form editor view (read-only, shows Questions tab)
 - `/dashboard/forms/[id]/responses` - Response analytics with bar charts (BarChartComponent)
+- `/dashboard/consent` - Consent management (requires MANAGE_CONSENTS or VIEW_CONSENTS permission)
+- `/dashboard/audit-logs` - Audit log viewer (requires VIEW_AUDIT_LOGS permission)
+- `/dashboard/settings` - User profile settings (MFA, session timeout, notifications)
 
 **Key Frontend Components:**
 - `MainForm.tsx` - Dynamic form renderer (renders forms from OneEntry schema, handles submission)
@@ -214,14 +262,19 @@ ORGANIZATION_NPI=1234567890
 
 ### Configuration & Deployment
 - `.env.example` - Complete environment variable template with HIPAA settings
+- `SETUP_GUIDE.md` ⭐ - **Main production setup guide** (comprehensive walkthrough)
 - `HIPAA_COMPLIANCE_PLAN.md` - Comprehensive compliance implementation guide
 - `GCP_DEPLOYMENT_GUIDE.md` - Detailed manual deployment guide for GCP
 - `QUICK_START.md` - Step-by-step quick start guide for new users
+- `docs/CLERK_ROLE_SETUP.md` - Clerk role configuration reference (9 role types)
+- `docs/DEPLOYMENT_CHECKLIST.md` - Pre-launch verification checklist (50+ items)
+- `docs/README.md` - Documentation hub organized by user role
 - `store/store.ts` - Zustand state management
 
 ### Deployment Automation
 - `scripts/setup-gcp.sh` - Automated GCP infrastructure setup (Cloud KMS, Cloud SQL, Cloud Storage, BigQuery)
 - `scripts/deploy-cloud-run.sh` - Automated Cloud Run deployment
+- `scripts/test-user-flows.sh` - Automated testing script (verifies all HIPAA components)
 - `scripts/README.md` - Complete documentation for deployment scripts
 
 **Setup Script Features:**
@@ -456,25 +509,32 @@ Configurable retention by survey category:
 - Submissions go through encryption layer before storage
 - **CRITICAL**: Verify OneEntry provides BAA before using with real PHI
 
-### HIPAA UI Components (To Be Implemented)
+### HIPAA UI Components (Implemented)
 
-The backend HIPAA compliance logic is complete, but these UI components need to be added:
+All HIPAA-compliant UI components are implemented with Google-inspired Material Design:
 
-**Missing Components:**
-1. **Consent Management UI** - Digital consent forms with e-signature before survey access
-2. **PHI Field Indicators** - Visual markers (🔒) on fields containing PHI
-3. **Audit Log Viewer** - Dashboard page for compliance officers to view PHI access logs
-4. **Session Timeout Warning** - Modal showing countdown before auto-logout
-5. **Research Export Dialog** - UI for exporting de-identified or limited data sets
-6. **Break-Glass Access Modal** - Emergency access form requiring justification
-7. **Role-Based Navigation** - Show/hide UI elements based on user role
-8. **User Profile Settings** - MFA setup, session timeout preferences
-9. **IRB Approval Tracker** - For research surveys requiring IRB approval
+**Core Components:**
+1. **Session Timeout Modal** (`SessionTimeoutModal.tsx`) - Role-based auto-logout with 60-second countdown warning
+2. **PHI Field Indicators** (`PHIIndicator.tsx`) - Lock icons on sensitive fields with HIPAA tooltips
+3. **Consent Management** (`ConsentManagementClient.tsx`) - `/dashboard/consent` - Full consent tracking interface
+4. **Audit Log Viewer** (`AuditLogViewerClient.tsx`) - `/dashboard/audit-logs` - Comprehensive activity and PHI access logs
+5. **Research Export Dialog** (`ResearchExportDialog.tsx`) - Export with Safe Harbor or Limited Data Set de-identification
+6. **Break-Glass Access Modal** (`BreakGlassAccessModal.tsx`) - Emergency PHI access with required justification
+7. **Role-Based Navigation** (`RoleBasedNav.tsx`) - Dynamic sidebar menu based on user permissions
+8. **User Profile Settings** (`UserProfileSettingsClient.tsx`) - `/dashboard/settings` - MFA setup, session preferences
 
-**Implementation Priority:**
-- High: Consent Management, PHI Indicators, Session Timeout
-- Medium: Audit Log Viewer, Role-Based Navigation
-- Low: Research Export Dialog, Break-Glass Modal (specialty features)
+**Supporting Components:**
+- **RBAC Hooks** (`lib/hooks/use-user-role.ts`, `use-permissions.ts`) - Client-side permission checking
+- **Permission Gates** (`components/auth/RoleGate.tsx`, `PermissionGate.tsx`) - Conditional rendering by role
+- **PHI Detection** (`lib/phi-detection.ts`) - Automatic PHI field identification by name patterns
+
+**Key Features:**
+- All components integrate with existing Clerk authentication
+- Permission-gated based on user role (9 role types)
+- Complete audit logging for all PHI access
+- Google Material Design aesthetic with purple accent (#6B46C1)
+- Responsive design (mobile-first approach)
+- Accessibility-compliant (WCAG 2.1)
 
 ### Adding New Components
 
