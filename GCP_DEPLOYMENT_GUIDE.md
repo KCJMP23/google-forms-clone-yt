@@ -161,7 +161,7 @@ openssl rand -base64 32 | \
 
 # Grant Cloud Run access to secrets
 gcloud secrets add-iam-policy-binding clerk-secret-key \
-  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --member="serviceAccount:medical-surveys-sa@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
