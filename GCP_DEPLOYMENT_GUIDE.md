@@ -389,9 +389,12 @@ gcloud run deploy medical-surveys \
   --set-secrets="CLERK_SECRET_KEY=clerk-secret-key:latest" \
   --set-secrets="DATABASE_PASSWORD=cloudsql-password:latest" \
   --add-cloudsql-instances=$PROJECT_ID:$REGION:medical-surveys-db \
+  --add-cloudsql-instances=$PROJECT_ID:$REGION:medical-surveys-db \
+  # Note: A VPC connector is required for Cloud Run to connect to Cloud SQL via private IP. Create one first.
+  # Example: gcloud compute networks vpc-access connectors create medical-surveys-connector --region=$REGION --range=10.8.0.0/28
   --vpc-connector=medical-surveys-connector \
   --ingress=all \
-  --allow-unauthenticated=false \
+  --allow-unauthenticated \
   --service-account=medical-surveys-sa@$PROJECT_ID.iam.gserviceaccount.com
 ```
 
