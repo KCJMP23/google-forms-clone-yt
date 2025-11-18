@@ -1,0 +1,59 @@
+{
+  "name": "hipaa-survey-mobile",
+  "version": "1.0.0",
+  "description": "HIPAA-compliant mobile survey app",
+  "main": "index.js",
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "start": "react-native start",
+    "test": "jest",
+    "lint": "eslint .",
+    "e2e:ios": "detox test --configuration ios.sim.debug",
+    "e2e:android": "detox test --configuration android.emu.debug"
+  },
+  "dependencies": {
+    "react": "18.2.0",
+    "react-native": "0.72.6",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/stack": "^6.3.20",
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@reduxjs/toolkit": "^1.9.7",
+    "react-redux": "^8.1.3",
+    "@watermelondb/watermelondb": "^0.27.1",
+    "axios": "^1.6.2",
+    "react-native-biometrics": "^3.0.1",
+    "react-native-quick-crypto": "^0.6.1",
+    "react-native-keychain": "^8.1.2",
+    "react-native-vision-camera": "^3.6.14",
+    "react-native-qrcode-scanner": "^1.5.5",
+    "react-native-signature-canvas": "^4.7.1",
+    "react-native-image-picker": "^7.0.3",
+    "react-native-fs": "^2.20.0",
+    "react-native-device-info": "^10.11.0",
+    "react-native-netinfo": "^11.2.0",
+    "react-i18next": "^13.5.0",
+    "i18next": "^23.7.6",
+    "date-fns": "^2.30.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.5",
+    "@babel/preset-env": "^7.23.5",
+    "@babel/runtime": "^7.23.5",
+    "@react-native/eslint-config": "^0.72.2",
+    "@react-native/metro-config": "^0.72.11",
+    "@types/react": "^18.2.42",
+    "@types/react-test-renderer": "^18.0.7",
+    "babel-jest": "^29.7.0",
+    "detox": "^20.14.7",
+    "eslint": "^8.55.0",
+    "jest": "^29.7.0",
+    "metro-react-native-babel-preset": "0.76.9",
+    "react-test-renderer": "18.2.0",
+    "typescript": "5.0.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
