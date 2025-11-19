@@ -222,14 +222,17 @@ export async function getDistributionStats(
   const responses = await getFromDatabaseMock('distribution_responses', { formId });
 
   // Calculate stats
+  const clicksByDay = aggregateByDay(clicks).map(item => ({ date: item.date, clicks: item.count }));
+  const responsesByDay = aggregateByDay(responses).map(item => ({ date: item.date, responses: item.count }));
+
   const stats: DistributionStats = {
     totalLinks: links?.length || 0,
     activeLinks: links?.filter((l: any) => l.isActive).length || 0,
     expiredLinks: links?.filter((l: any) => !l.isActive).length || 0,
     totalClicks: clicks?.length || 0,
     totalResponses: responses?.length || 0,
-    clicksByDay: aggregateByDay(clicks),
-    responsesByDay: aggregateByDay(responses),
+    clicksByDay,
+    responsesByDay,
     responseRate: clicks?.length > 0 ? (responses?.length / clicks?.length) * 100 : 0,
   };
 

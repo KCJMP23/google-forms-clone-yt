@@ -647,3 +647,113 @@ export async function getPHIAccessAuditTrail(
   console.warn('⚠️  TODO: Implement PHI access audit trail');
   return [];
 }
+
+/**
+ * Generic audit log function (wrapper for createAuditLog)
+ */
+export async function auditLog(params: {
+  userId: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  details?: any;
+  containsPHI?: boolean;
+  phiFields?: string[];
+  ipAddress?: string;
+  userAgent?: string;
+}): Promise<void> {
+  await createAuditLog({
+    action: params.action as AuditAction,
+    resourceType: params.resourceType,
+    resourceId: params.resourceId,
+    phiAccessed: params.containsPHI,
+    phiFields: params.phiFields,
+    userId: params.userId,
+  });
+}
+
+/**
+ * Audit form creation
+ */
+export async function auditFormCreation(
+  formId: string,
+  formTitle: string,
+  containsPHI: boolean,
+  userId: string
+): Promise<void> {
+  await createAuditLog({
+    action: 'create' as AuditAction,
+    resourceType: 'form',
+    resourceId: formId,
+    phiAccessed: containsPHI,
+    userId,
+  });
+}
+
+/**
+ * Audit file upload
+ */
+export async function auditFileUpload(
+  fileId: string,
+  filename: string,
+  userId: string,
+  isPHI: boolean
+): Promise<void> {
+  await createAuditLog({
+    action: 'create' as AuditAction,
+    resourceType: 'file',
+    resourceId: fileId,
+    phiAccessed: isPHI,
+    userId,
+  });
+}
+
+/**
+ * Audit file access
+ */
+export async function auditFileAccess(
+  fileId: string,
+  userId: string,
+  isPHI: boolean
+): Promise<void> {
+  await createAuditLog({
+    action: 'view' as AuditAction,
+    resourceType: 'file',
+    resourceId: fileId,
+    phiAccessed: isPHI,
+    userId,
+  });
+}
+
+/**
+ * Audit file deletion
+ */
+export async function auditFileDelete(
+  fileId: string,
+  userId: string,
+  isPHI: boolean
+): Promise<void> {
+  await createAuditLog({
+    action: 'delete' as AuditAction,
+    resourceType: 'file',
+    resourceId: fileId,
+    phiAccessed: isPHI,
+    userId,
+  });
+}
+
+/**
+ * Audit notification sent
+ */
+export async function auditNotificationSent(
+  notificationType: string,
+  recipientId: string,
+  containsPHI: boolean
+): Promise<void> {
+  await createAuditLog({
+    action: 'export' as AuditAction,
+    resourceType: 'notification',
+    resourceId: recipientId,
+    phiAccessed: containsPHI,
+  });
+}

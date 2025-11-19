@@ -61,7 +61,7 @@ export async function linkResponseToParticipant(
   // TODO: Implement
 }
 
-export async function getParticipantsByC ohort(cohortId: string): Promise<Participant[]> {
+export async function getParticipantsByCohort(cohortId: string): Promise<Participant[]> {
   // TODO: Fetch from database
   return [];
 }

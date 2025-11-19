@@ -65,7 +65,7 @@ export async function detectAnomalies(
 
   // Check for inconsistent answers
   if (checkConsistency) {
-    const inconsistent = checkConsistency(response);
+    const inconsistent = checkForInconsistentAnswers(response);
     if (inconsistent.length > 0) {
       anomalies.push(`Inconsistent answers detected: ${inconsistent.join(', ')}`);
       details.inconsistentAnswers = true;
@@ -88,7 +88,7 @@ export async function detectAnomalies(
 
   // Check data quality
   if (checkDataQuality) {
-    const qualityIssues = checkDataQuality(response);
+    const qualityIssues = checkForDataQualityIssues(response);
     if (qualityIssues.length > 0) {
       anomalies.push(...qualityIssues);
       details.invalidData = true;
@@ -175,7 +175,7 @@ function calculateResponseSimilarity(response1: any, response2: any): number {
 /**
  * Check for inconsistent answers
  */
-function checkConsistency(response: any): string[] {
+function checkForInconsistentAnswers(response: any): string[] {
   const inconsistencies: string[] = [];
   const responses = response.responses || {};
 
@@ -211,7 +211,7 @@ function checkConsistency(response: any): string[] {
 /**
  * Check data quality
  */
-function checkDataQuality(response: any): string[] {
+function checkForDataQualityIssues(response: any): string[] {
   const issues: string[] = [];
   const responses = response.responses || {};
 
