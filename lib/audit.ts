@@ -296,9 +296,12 @@ async function sendSecurityAlert(auditLog: AuditLog): Promise<void> {
 export async function auditPHIAccess(
   resourceType: string,
   resourceId: string,
-  phiFields: string[]
+  phiFields: string[],
+  userId?: string,
+  details?: any
 ): Promise<void> {
   await createAuditLog({
+    userId,
     action: AuditAction.VIEW_PHI,
     resourceType,
     resourceId,
@@ -343,16 +346,20 @@ export async function auditResponseView(
  * Log data export
  */
 export async function auditDataExport(
+  action: string,
   resourceType: string,
   recordCount: number,
   containsPHI: boolean,
+  userId?: string,
+  details?: any,
   isDeidentified: boolean = false
 ): Promise<void> {
   await createAuditLog({
-    action: AuditAction.EXPORT_DATA,
+    action: (action as AuditAction) || AuditAction.EXPORT_DATA,
     resourceType,
     resourceId: `export-${Date.now()}`,
     phiAccessed: containsPHI && !isDeidentified,
+    userId,
     changes: {
       after: {
         recordCount,
