@@ -6,21 +6,22 @@
 
 import QRCode from 'qrcode';
 import { auditLog } from './audit';
+import prisma from './prisma';
 
 export interface DistributionLink {
   id: string;
   formId: string;
   type: 'public' | 'unique' | 'temporary';
   url: string;
-  qrCode?: string;
+  qrCode?: string | null;
   createdBy: string;
   createdAt: Date;
-  expiresAt?: Date;
-  maxResponses?: number;
+  expiresAt?: Date | null;
+  maxResponses?: number | null;
   currentResponses: number;
   isActive: boolean;
   trackingEnabled: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> | null;
 }
 
 export interface DistributionStats {
@@ -59,30 +60,33 @@ export async function generateDistributionLink(
   } = {}
 ): Promise<DistributionLink> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const type = options.type || 'public';
 
-  const link: DistributionLink = {
-    id: generateUniqueId(),
-    formId,
-    type: options.type || 'public',
-    url: `${baseUrl}/forms/${formId}`,
-    createdBy: userId,
-    createdAt: new Date(),
-    expiresAt: options.expiresAt,
-    maxResponses: options.maxResponses,
-    currentResponses: 0,
-    isActive: true,
-    trackingEnabled: options.trackingEnabled ?? true,
-    metadata: options.metadata,
-  };
+  // Generate URL with token for unique/temporary links
+  let url = `${baseUrl}/forms/${formId}`;
+  let token: string | undefined;
 
-  // Add unique token for unique/temporary links
-  if (link.type === 'unique' || link.type === 'temporary') {
-    const token = generateUniqueToken();
-    link.url = `${baseUrl}/forms/${formId}?token=${token}`;
+  if (type === 'unique' || type === 'temporary') {
+    token = generateUniqueToken();
+    url = `${baseUrl}/forms/${formId}?token=${token}`;
   }
 
-  // Save to database (simulate)
-  await saveToDatabaseMock('distribution_links', link);
+  // Save to database using Prisma
+  const link = await prisma.distributionLink.create({
+    data: {
+      formId,
+      type,
+      url,
+      token,
+      createdBy: userId,
+      expiresAt: options.expiresAt,
+      maxResponses: options.maxResponses,
+      currentResponses: 0,
+      isActive: true,
+      trackingEnabled: options.trackingEnabled ?? true,
+      metadata: options.metadata as any,
+    }
+  });
 
   // Audit log
   await auditLog({
@@ -100,7 +104,7 @@ export async function generateDistributionLink(
     userAgent: '',
   });
 
-  return link;
+  return link as DistributionLink;
 }
 
 /**
@@ -111,8 +115,10 @@ export async function generateQRCode(
   userId: string,
   options: QRCodeOptions = {}
 ): Promise<string> {
-  // Get distribution link
-  const link = await getFromDatabaseMock('distribution_links', { id: distributionLinkId });
+  // Get distribution link from database
+  const link = await prisma.distributionLink.findUnique({
+    where: { id: distributionLinkId }
+  });
 
   if (!link) {
     throw new Error('Distribution link not found');
@@ -130,8 +136,10 @@ export async function generateQRCode(
   });
 
   // Update link with QR code
-  link.qrCode = qrCodeDataURL;
-  await updateDatabaseMock('distribution_links', { id: distributionLinkId }, link);
+  await prisma.distributionLink.update({
+    where: { id: distributionLinkId },
+    data: { qrCode: qrCodeDataURL }
+  });
 
   // Audit log
   await auditLog({
@@ -154,21 +162,23 @@ export async function trackLinkClick(
   distributionLinkId: string,
   metadata?: Record<string, any>
 ): Promise<void> {
-  const link = await getFromDatabaseMock('distribution_links', { id: distributionLinkId });
+  const link = await prisma.distributionLink.findUnique({
+    where: { id: distributionLinkId }
+  });
 
   if (!link || !link.trackingEnabled) {
     return;
   }
 
   // Record click event
-  await saveToDatabaseMock('distribution_clicks', {
-    id: generateUniqueId(),
-    distributionLinkId,
-    formId: link.formId,
-    timestamp: new Date(),
-    ipAddress: metadata?.ipAddress,
-    userAgent: metadata?.userAgent,
-    referrer: metadata?.referrer,
+  await prisma.distributionClick.create({
+    data: {
+      distributionLinkId,
+      formId: link.formId,
+      ipAddress: metadata?.ipAddress,
+      userAgent: metadata?.userAgent,
+      referrer: metadata?.referrer,
+    }
   });
 }
 
@@ -179,30 +189,27 @@ export async function trackDistributionResponse(
   distributionLinkId: string,
   responseId: string
 ): Promise<void> {
-  const link = await getFromDatabaseMock('distribution_links', { id: distributionLinkId });
+  const link = await prisma.distributionLink.findUnique({
+    where: { id: distributionLinkId }
+  });
 
   if (!link) {
     return;
   }
 
-  // Increment response count
-  link.currentResponses++;
-
-  // Deactivate if max responses reached
-  if (link.maxResponses && link.currentResponses >= link.maxResponses) {
-    link.isActive = false;
-  }
-
-  await updateDatabaseMock('distribution_links', { id: distributionLinkId }, link);
-
-  // Record response event
-  await saveToDatabaseMock('distribution_responses', {
-    id: generateUniqueId(),
-    distributionLinkId,
-    responseId,
-    formId: link.formId,
-    timestamp: new Date(),
+  // Increment response count and deactivate if max reached
+  const updatedLink = await prisma.distributionLink.update({
+    where: { id: distributionLinkId },
+    data: {
+      currentResponses: { increment: 1 },
+      isActive: link.maxResponses && link.currentResponses + 1 >= link.maxResponses
+        ? false
+        : link.isActive
+    }
   });
+
+  // Note: Response tracking is now handled by the Response model's distributionLinkId field
+  // No need for separate distribution_responses table
 }
 
 /**
@@ -212,28 +219,57 @@ export async function getDistributionStats(
   formId: string,
   dateRange?: { start: Date; end: Date }
 ): Promise<DistributionStats> {
+  // Build date filter
+  const dateFilter = dateRange ? {
+    timestamp: {
+      gte: dateRange.start,
+      lte: dateRange.end
+    }
+  } : {};
+
   // Get all links for form
-  const links = await getFromDatabaseMock('distribution_links', { formId });
+  const links = await prisma.distributionLink.findMany({
+    where: { formId }
+  });
 
   // Get click events
-  const clicks = await getFromDatabaseMock('distribution_clicks', { formId });
+  const clicks = await prisma.distributionClick.findMany({
+    where: {
+      formId,
+      ...dateFilter
+    }
+  });
 
-  // Get response events
-  const responses = await getFromDatabaseMock('distribution_responses', { formId });
+  // Get response events (from Response model)
+  const responses = await prisma.response.findMany({
+    where: {
+      formId,
+      distributionLinkId: { not: null },
+      ...(dateRange ? {
+        submittedAt: {
+          gte: dateRange.start,
+          lte: dateRange.end
+        }
+      } : {})
+    }
+  });
 
   // Calculate stats
-  const clicksByDay = aggregateByDay(clicks).map(item => ({ date: item.date, clicks: item.count }));
-  const responsesByDay = aggregateByDay(responses).map(item => ({ date: item.date, responses: item.count }));
+  const clicksByDay = aggregateByDay(clicks.map(c => ({ timestamp: c.timestamp })))
+    .map(item => ({ date: item.date, clicks: item.count }));
+
+  const responsesByDay = aggregateByDay(responses.map(r => ({ timestamp: r.submittedAt })))
+    .map(item => ({ date: item.date, responses: item.count }));
 
   const stats: DistributionStats = {
-    totalLinks: links?.length || 0,
-    activeLinks: links?.filter((l: any) => l.isActive).length || 0,
-    expiredLinks: links?.filter((l: any) => !l.isActive).length || 0,
-    totalClicks: clicks?.length || 0,
-    totalResponses: responses?.length || 0,
+    totalLinks: links.length,
+    activeLinks: links.filter(l => l.isActive).length,
+    expiredLinks: links.filter(l => !l.isActive).length,
+    totalClicks: clicks.length,
+    totalResponses: responses.length,
     clicksByDay,
     responsesByDay,
-    responseRate: clicks?.length > 0 ? (responses?.length / clicks?.length) * 100 : 0,
+    responseRate: clicks.length > 0 ? (responses.length / clicks.length) * 100 : 0,
   };
 
   return stats;
@@ -246,7 +282,9 @@ export async function validateDistributionLink(
   distributionLinkId: string,
   token?: string
 ): Promise<{ valid: boolean; reason?: string }> {
-  const link = await getFromDatabaseMock('distribution_links', { id: distributionLinkId });
+  const link = await prisma.distributionLink.findUnique({
+    where: { id: distributionLinkId }
+  });
 
   if (!link) {
     return { valid: false, reason: 'Link not found' };
@@ -260,8 +298,10 @@ export async function validateDistributionLink(
   // Check expiration
   if (link.expiresAt && new Date() > new Date(link.expiresAt)) {
     // Deactivate expired link
-    link.isActive = false;
-    await updateDatabaseMock('distribution_links', { id: distributionLinkId }, link);
+    await prisma.distributionLink.update({
+      where: { id: distributionLinkId },
+      data: { isActive: false }
+    });
     return { valid: false, reason: 'Link has expired' };
   }
 
@@ -271,8 +311,10 @@ export async function validateDistributionLink(
   }
 
   // Validate token for unique/temporary links
-  if ((link.type === 'unique' || link.type === 'temporary') && !token) {
-    return { valid: false, reason: 'Token required' };
+  if ((link.type === 'unique' || link.type === 'temporary')) {
+    if (!token || token !== link.token) {
+      return { valid: false, reason: 'Invalid or missing token' };
+    }
   }
 
   return { valid: true };
@@ -285,14 +327,18 @@ export async function deactivateDistributionLink(
   distributionLinkId: string,
   userId: string
 ): Promise<boolean> {
-  const link = await getFromDatabaseMock('distribution_links', { id: distributionLinkId });
+  const link = await prisma.distributionLink.findUnique({
+    where: { id: distributionLinkId }
+  });
 
   if (!link) {
     return false;
   }
 
-  link.isActive = false;
-  await updateDatabaseMock('distribution_links', { id: distributionLinkId }, link);
+  await prisma.distributionLink.update({
+    where: { id: distributionLinkId },
+    data: { isActive: false }
+  });
 
   // Audit log
   await auditLog({
@@ -314,8 +360,12 @@ export async function deactivateDistributionLink(
 export async function getFormDistributionLinks(
   formId: string
 ): Promise<DistributionLink[]> {
-  const links = await getFromDatabaseMock('distribution_links', { formId });
-  return links || [];
+  const links = await prisma.distributionLink.findMany({
+    where: { formId },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  return links as DistributionLink[];
 }
 
 /**
@@ -325,13 +375,17 @@ export async function deleteDistributionLink(
   distributionLinkId: string,
   userId: string
 ): Promise<boolean> {
-  const link = await getFromDatabaseMock('distribution_links', { id: distributionLinkId });
+  const link = await prisma.distributionLink.findUnique({
+    where: { id: distributionLinkId }
+  });
 
   if (!link) {
     return false;
   }
 
-  await deleteFromDatabaseMock('distribution_links', { id: distributionLinkId });
+  await prisma.distributionLink.delete({
+    where: { id: distributionLinkId }
+  });
 
   // Audit log
   await auditLog({
@@ -349,20 +403,16 @@ export async function deleteDistributionLink(
 
 // Helper functions
 
-function generateUniqueId(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
-}
-
 function generateUniqueToken(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(32)))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
-function aggregateByDay(events: any[]): Array<{ date: string; count: number }> {
-  if (!events) return [];
+function aggregateByDay(events: Array<{ timestamp: Date }>): Array<{ date: string; count: number }> {
+  if (!events || events.length === 0) return [];
 
-  const grouped = events.reduce((acc: any, event: any) => {
+  const grouped = events.reduce((acc: Record<string, number>, event) => {
     const date = new Date(event.timestamp).toISOString().split('T')[0];
     acc[date] = (acc[date] || 0) + 1;
     return acc;
@@ -370,27 +420,6 @@ function aggregateByDay(events: any[]): Array<{ date: string; count: number }> {
 
   return Object.entries(grouped).map(([date, count]) => ({
     date,
-    count: count as number,
+    count,
   }));
-}
-
-async function saveToDatabaseMock(table: string, data: any): Promise<void> {
-  // Replace with actual database save
-  console.log(`Saving to ${table}:`, data);
-}
-
-async function getFromDatabaseMock(table: string, filter: any): Promise<any> {
-  // Replace with actual database query
-  console.log(`Getting from ${table} with filter:`, filter);
-  return null;
-}
-
-async function updateDatabaseMock(table: string, filter: any, data: any): Promise<void> {
-  // Replace with actual database update
-  console.log(`Updating ${table} with filter:`, filter, 'data:', data);
-}
-
-async function deleteFromDatabaseMock(table: string, filter: any): Promise<void> {
-  // Replace with actual database delete
-  console.log(`Deleting from ${table} with filter:`, filter);
 }
