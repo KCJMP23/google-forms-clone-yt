@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { FormBuilderState } from '@/lib/form-builder-types';
 import { auditFormCreation } from '@/lib/audit';
 import { requirePermission, Permission } from '@/lib/rbac';
+import prisma from '@/lib/prisma';
 
 /**
  * POST /api/forms
@@ -28,18 +29,30 @@ export async function POST(request: Request) {
       );
     }
 
-    // TODO: Save to database (OneEntry or Firestore)
-    const savedForm = {
-      id: `form-${Date.now()}`,
-      ...formData,
-      createdBy: userId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      status: 'draft',
-    };
+    // Extract all fields from sections
+    const allFields = formData.sections.flatMap(section => section.fields);
+
+    // Save to database using Prisma
+    const savedForm = await prisma.form.create({
+      data: {
+        title: formData.title,
+        description: formData.description || '',
+        category: 'feedback', // Default category, can be derived from formData
+        dataClassification: formData.settings.dataClassification,
+        containsPHI: formData.settings.containsPHI,
+        consentRequired: formData.settings.requireConsent,
+        consentText: formData.settings.consentText,
+        retentionPeriodDays: formData.settings.retentionPeriodDays,
+        status: 'draft',
+        allowedRoles: formData.settings.allowedRoles,
+        fields: allFields as any, // Store fields as JSON
+        settings: formData.settings as any, // Store complete settings as JSON
+        createdBy: userId,
+      }
+    });
 
     // Audit log
-    await auditFormCreation(savedForm.id, formData.settings.containsPHI);
+    await auditFormCreation(savedForm.id, formData.title, formData.settings.containsPHI, userId);
 
     return NextResponse.json(savedForm);
   } catch (error) {
@@ -64,8 +77,30 @@ export async function GET(request: Request) {
 
     await requirePermission(Permission.VIEW_SURVEYS);
 
-    // TODO: Fetch from database
-    const forms = [];
+    // Fetch forms from database
+    const forms = await prisma.form.findMany({
+      where: {
+        createdBy: userId
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        category: true,
+        containsPHI: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            responses: true
+          }
+        }
+      }
+    });
 
     return NextResponse.json(forms);
   } catch (error) {

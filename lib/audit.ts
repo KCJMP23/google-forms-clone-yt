@@ -26,6 +26,7 @@ import {
   PHIIdentifierType
 } from './definitions';
 import { hashData } from './encryption';
+import prisma from './prisma';
 
 /**
  * Audit log creation parameters
@@ -185,36 +186,47 @@ async function storeAuditLog(auditLog: AuditLog): Promise<void> {
       console.log('📋 AUDIT LOG:', JSON.stringify(auditLog, null, 2));
     }
 
-    // TODO: Production implementation
-    // Examples:
-    //
-    // 1. Database insert:
-    // await prisma.auditLog.create({ data: auditLog });
-    //
-    // 2. AWS CloudWatch:
-    // await cloudwatch.putLogEvents({
-    //   logGroupName: '/hipaa/audit-logs',
-    //   logStreamName: `org-${auditLog.organizationId}`,
-    //   logEvents: [{
-    //     message: JSON.stringify(auditLog),
-    //     timestamp: auditLog.timestamp.getTime()
-    //   }]
-    // });
-    //
-    // 3. Azure Monitor:
-    // await monitorClient.logAuditEvent(auditLog);
-    //
-    // 4. File-based (development only):
-    // await fs.appendFile(
-    //   `logs/audit-${new Date().toISOString().split('T')[0]}.jsonl`,
-    //   JSON.stringify(auditLog) + '\n'
-    // );
+    // Store in PostgreSQL database
+    await prisma.auditLog.create({
+      data: {
+        userId: auditLog.userId,
+        userRole: auditLog.userRole.toString(),
+        action: auditLog.action.toString(),
+        resourceType: auditLog.resourceType,
+        resourceId: auditLog.resourceId,
+        responseId: auditLog.resourceType === 'response' ? auditLog.resourceId : undefined,
+        containsPHI: auditLog.phiAccessed || false,
+        phiFields: auditLog.phiFields || [],
+        details: auditLog.changes ? {
+          changes: auditLog.changes,
+          justification: auditLog.accessJustification,
+          isEmergency: auditLog.isEmergencyAccess
+        } : undefined,
+        ipAddress: auditLog.ipAddress,
+        userAgent: auditLog.userAgent,
+        sessionId: auditLog.sessionId,
+        success: auditLog.success,
+        errorMessage: auditLog.errorMessage,
+        changesBefore: auditLog.changes?.before,
+        changesAfter: auditLog.changes?.after,
+        timestamp: auditLog.timestamp
+      }
+    });
 
-    // Placeholder for production implementation
-    console.warn('⚠️  TODO: Implement production audit log storage');
+    // Optional: Archive old logs to BigQuery for long-term retention (6+ years)
+    // This can be done via a scheduled job that moves logs older than 90 days
+    // await archiveToBigQuery(auditLog);
 
   } catch (error) {
-    console.error('Failed to store audit log:', error);
+    // CRITICAL: Never fail the main operation if audit logging fails
+    console.error('❌ Failed to store audit log:', error);
+
+    // Fallback: Log to file for investigation
+    if (process.env.NODE_ENV === 'production') {
+      console.error('AUDIT LOG FAILURE:', JSON.stringify(auditLog));
+    }
+
+    // Re-throw to ensure calling code knows audit failed
     throw error;
   }
 }
