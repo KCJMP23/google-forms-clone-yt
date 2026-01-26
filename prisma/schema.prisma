@@ -1,0 +1,427 @@
+// Prisma Schema for HIPAA-Compliant Survey Platform
+// Database: PostgreSQL with encryption at rest
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// CORE MODELS - Forms and Responses
+// ============================================================================
+
+model Form {
+  id                  String             @id @default(cuid())
+  title               String
+  description         String?
+  category            String             // patient-intake, satisfaction, consent, screening, research, feedback
+  dataClassification  String             // PHI, De-identified, Anonymous, Limited Data Set
+  containsPHI         Boolean            @default(false)
+  consentRequired     Boolean            @default(false)
+  consentText         String?
+  retentionPeriodDays Int                @default(2190) // 6 years
+  status              String             @default("draft") // draft, active, archived
+  allowedRoles        String[]
+  fields              Json               // Form field definitions
+  settings            Json               // FormSettings object
+  createdBy           String
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  publishedAt         DateTime?
+
+  // Relations
+  responses           Response[]
+  distributionLinks   DistributionLink[]
+  workflows           Workflow[]
+
+  @@index([createdBy])
+  @@index([category])
+  @@index([status])
+  @@index([containsPHI])
+}
+
+model Response {
+  id                  String             @id @default(cuid())
+  formId              String
+  form                Form               @relation(fields: [formId], references: [id], onDelete: Cascade)
+  participantId       String?
+  participant         Participant?       @relation(fields: [participantId], references: [id])
+  responses           Json               // Field responses (PHI fields encrypted)
+  containsPHI         Boolean            @default(false)
+  dataClassification  String             // PHI, De-identified, Anonymous, Limited Data Set
+  submittedAt         DateTime           @default(now())
+  submittedBy         String?            // User ID if authenticated submission
+  ipAddress           String?
+  userAgent           String?
+  completionTime      Int?               // Seconds to complete
+  distributionLinkId  String?
+  distributionLink    DistributionLink?  @relation(fields: [distributionLinkId], references: [id])
+
+  // Relations
+  files               File[]
+  auditLogs           AuditLog[]
+
+  @@index([formId])
+  @@index([participantId])
+  @@index([submittedAt])
+  @@index([distributionLinkId])
+}
+
+// ============================================================================
+// PARTICIPANT MANAGEMENT
+// ============================================================================
+
+model Participant {
+  id                  String             @id @default(cuid())
+  mrn                 String?            @unique // Medical Record Number (encrypted)
+  email               String?            // Encrypted
+  phone               String?            // Encrypted
+  enrolledAt          DateTime           @default(now())
+  optedOut            Boolean            @default(false)
+  withdrawalDate      DateTime?
+  withdrawalReason    String?
+  communicationPrefs  Json               // Email, SMS, etc.
+  metadata            Json?              // Custom participant data
+
+  // Relations
+  cohorts             CohortParticipant[]
+  responses           Response[]
+  consents            ConsentStatus[]
+
+  @@index([mrn])
+  @@index([email])
+  @@index([optedOut])
+}
+
+model Cohort {
+  id                  String             @id @default(cuid())
+  name                String
+  description         String?
+  criteria            Json               // Inclusion/exclusion criteria
+  createdBy           String
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  // Relations
+  participants        CohortParticipant[]
+
+  @@index([createdBy])
+}
+
+model CohortParticipant {
+  id                  String             @id @default(cuid())
+  cohortId            String
+  cohort              Cohort             @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  participantId       String
+  participant         Participant        @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  addedAt             DateTime           @default(now())
+  addedBy             String
+
+  @@unique([cohortId, participantId])
+  @@index([cohortId])
+  @@index([participantId])
+}
+
+// ============================================================================
+// CONSENT MANAGEMENT
+// ============================================================================
+
+model ConsentStatus {
+  id                  String             @id @default(cuid())
+  participantId       String
+  participant         Participant        @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  formId              String?            // Optional link to specific form
+  consentType         String             // research, treatment, data_sharing
+  grantedAt           DateTime           @default(now())
+  expiresAt           DateTime?
+  status              String             // active, expired, withdrawn
+  withdrawnAt         DateTime?
+  documentUrl         String?            // Link to signed consent document
+  ipAddress           String?
+  userAgent           String?
+
+  @@index([participantId])
+  @@index([formId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// AUDIT LOGGING (HIPAA §164.312(b))
+// ============================================================================
+
+model AuditLog {
+  id                  String             @id @default(cuid())
+  userId              String             // Who performed the action
+  userRole            String             // User's role at time of action
+  action              String             // Action performed (view, create, edit, delete, export, etc.)
+  resourceType        String             // Type of resource accessed (form, response, participant, etc.)
+  resourceId          String             // ID of resource
+  responseId          String?            // Optional link to specific response
+  response            Response?          @relation(fields: [responseId], references: [id])
+  containsPHI         Boolean            @default(false)
+  phiFields           String[]           // Which PHI fields were accessed
+  details             Json?              // Additional context
+  ipAddress           String
+  userAgent           String
+  sessionId           String?
+  success             Boolean            @default(true)
+  errorMessage        String?
+  timestamp           DateTime           @default(now())
+
+  // For change tracking
+  changesBefore       Json?              // State before action
+  changesAfter        Json?              // State after action
+
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([responseId])
+  @@index([action])
+  @@index([timestamp])
+  @@index([containsPHI])
+}
+
+// ============================================================================
+// DISTRIBUTION & TRACKING
+// ============================================================================
+
+model DistributionLink {
+  id                  String             @id @default(cuid())
+  formId              String
+  form                Form               @relation(fields: [formId], references: [id], onDelete: Cascade)
+  type                String             // public, unique, temporary
+  url                 String
+  token               String?            @unique // For unique/temporary links
+  qrCode              String?            // Base64 QR code image
+  createdBy           String
+  createdAt           DateTime           @default(now())
+  expiresAt           DateTime?
+  maxResponses        Int?
+  currentResponses    Int                @default(0)
+  isActive            Boolean            @default(true)
+  trackingEnabled     Boolean            @default(true)
+  metadata            Json?
+
+  // Relations
+  clicks              DistributionClick[]
+  responses           Response[]
+
+  @@index([formId])
+  @@index([token])
+  @@index([isActive])
+  @@index([expiresAt])
+}
+
+model DistributionClick {
+  id                  String             @id @default(cuid())
+  distributionLinkId  String
+  distributionLink    DistributionLink   @relation(fields: [distributionLinkId], references: [id], onDelete: Cascade)
+  formId              String
+  timestamp           DateTime           @default(now())
+  ipAddress           String?
+  userAgent           String?
+  referrer            String?
+
+  @@index([distributionLinkId])
+  @@index([formId])
+  @@index([timestamp])
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+model NotificationQueue {
+  id                  String             @id @default(cuid())
+  type                String             // email, sms, push
+  recipientId         String             // User ID or participant ID
+  recipientEmail      String?
+  recipientPhone      String?
+  subject             String?
+  body                String
+  template            String?
+  templateData        Json?
+  priority            Int                @default(5) // 1-10, 10 = highest
+  status              String             @default("pending") // pending, sent, failed
+  containsPHI         Boolean            @default(false)
+  scheduledFor        DateTime?
+  sentAt              DateTime?
+  failedAt            DateTime?
+  errorMessage        String?
+  retryCount          Int                @default(0)
+  maxRetries          Int                @default(3)
+  createdAt           DateTime           @default(now())
+
+  @@index([status])
+  @@index([recipientId])
+  @@index([scheduledFor])
+  @@index([priority])
+}
+
+// ============================================================================
+// FILE STORAGE
+// ============================================================================
+
+model File {
+  id                  String             @id @default(cuid())
+  filename            String
+  originalName        String
+  mimeType            String
+  size                Int
+  storageUrl          String             // GCS URL: gs://bucket/filename
+  uploadedBy          String
+  uploadedAt          DateTime           @default(now())
+  isPHI               Boolean            @default(false)
+  encrypted           Boolean            @default(false)
+  encryptionKeyId     String?
+  virusScanStatus     String             @default("pending") // pending, clean, infected
+  virusScanDate       DateTime?
+  responseId          String?
+  response            Response?          @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  formId              String?
+
+  @@index([uploadedBy])
+  @@index([responseId])
+  @@index([formId])
+  @@index([virusScanStatus])
+}
+
+// ============================================================================
+// SEARCH & SAVED QUERIES
+// ============================================================================
+
+model SavedSearch {
+  id                  String             @id @default(cuid())
+  userId              String
+  name                String
+  description         String?
+  searchQuery         String
+  filters             Json
+  createdAt           DateTime           @default(now())
+  lastUsedAt          DateTime?
+
+  @@index([userId])
+}
+
+// ============================================================================
+// WORKFLOW AUTOMATION
+// ============================================================================
+
+model Workflow {
+  id                  String             @id @default(cuid())
+  formId              String?
+  form                Form?              @relation(fields: [formId], references: [id], onDelete: Cascade)
+  name                String
+  description         String?
+  trigger             String             // form_submission, consent_expiring, participant_enrolled
+  conditions          Json               // Trigger conditions
+  actions             Json               // Actions to execute
+  isActive            Boolean            @default(true)
+  createdBy           String
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  // Relations
+  executions          WorkflowExecution[]
+  approvalRequests    ApprovalRequest[]
+
+  @@index([formId])
+  @@index([isActive])
+  @@index([trigger])
+}
+
+model WorkflowExecution {
+  id                  String             @id @default(cuid())
+  workflowId          String
+  workflow            Workflow           @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  triggeredBy         String             // Event that triggered execution
+  status              String             // pending, running, completed, failed
+  startedAt           DateTime           @default(now())
+  completedAt         DateTime?
+  executionData       Json               // Context data
+  results             Json?              // Execution results
+  errorMessage        String?
+
+  @@index([workflowId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model ApprovalRequest {
+  id                  String             @id @default(cuid())
+  workflowId          String
+  workflow            Workflow           @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  requestedBy         String
+  approverRole        String             // Role required to approve
+  resourceType        String
+  resourceId          String
+  justification       String
+  status              String             @default("pending") // pending, approved, rejected
+  approvedBy          String?
+  approvedAt          DateTime?
+  rejectedBy          String?
+  rejectedAt          DateTime?
+  rejectionReason     String?
+  createdAt           DateTime           @default(now())
+
+  @@index([workflowId])
+  @@index([status])
+  @@index([approverRole])
+}
+
+// ============================================================================
+// BREAK-GLASS EMERGENCY ACCESS
+// ============================================================================
+
+model BreakGlassAccess {
+  id                  String             @id @default(cuid())
+  userId              String
+  userRole            String
+  resourceType        String
+  resourceId          String
+  justification       String             // Required explanation (min 20 chars)
+  accessToken         String             @unique
+  status              String             @default("granted") // granted, revoked, expired
+  grantedAt           DateTime           @default(now())
+  expiresAt           DateTime           // 15 minutes from grant
+  revokedAt           DateTime?
+  revokedBy           String?
+  revokedReason       String?
+  alertSent           Boolean            @default(false)
+  alertSentAt         DateTime?
+
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([accessToken])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// USER PROFILES & ORGANIZATIONS
+// ============================================================================
+
+model UserProfile {
+  id                  String             @id @default(cuid())
+  clerkUserId         String             @unique
+  email               String             @unique
+  role                String             // system_admin, physician, research_coordinator, etc.
+  organizationId      String?
+  organizationName    String?
+  npi                 String?            // National Provider Identifier (for physicians)
+  mfaEnabled          Boolean            @default(false)
+  sessionTimeout      Int                @default(15) // Minutes
+  notificationPrefs   Json               // Notification preferences
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  lastLoginAt         DateTime?
+
+  @@index([clerkUserId])
+  @@index([email])
+  @@index([role])
+  @@index([organizationId])
+}

@@ -20,6 +20,8 @@ import { attributeTypeToInputType } from "@/lib/definitions";
 import SubmitButton from "./SubmitButton";
 import { useFormState } from "react-dom";
 import { addFormData } from "@/lib/actions";
+import { PHIIndicator } from "./PHIIndicator";
+import { detectPHI } from "@/lib/phi-detection";
 
 function MainForm({
   form,
@@ -53,15 +55,29 @@ function MainForm({
       {form.attributes.length > 0 ? (
         <form className="space-y-3.5" action={formAction}>
           <input type="hidden" name="identifier" value={form.identifier} />
-          {form.attributes.map((attr) => (
-            <Card key={attr.marker}>
-              <CardContent className="grid w-full max-w-xl pt-6 items-center gap-1.5">
-                <Label htmlFor={attr.marker} className="text-base font-normal">
-                  {attr.localizeInfos.title}
-                  {attr.validators?.requiredValidator?.strict && (
-                    <span className="text-destructive">*</span>
-                  )}
-                </Label>
+          {form.attributes.map((attr) => {
+            // Detect if field contains PHI
+            const phiDetection = detectPHI(
+              attr.marker,
+              attr.localizeInfos.title
+            );
+
+            return (
+              <Card key={attr.marker}>
+                <CardContent className="grid w-full max-w-xl pt-6 items-center gap-1.5">
+                  <Label htmlFor={attr.marker} className="text-base font-normal flex items-center gap-2">
+                    <span className="flex items-center gap-1.5">
+                      {attr.localizeInfos.title}
+                      {attr.validators?.requiredValidator?.strict && (
+                        <span className="text-destructive">*</span>
+                      )}
+                    </span>
+                    {phiDetection?.isPHI && (
+                      <PHIIndicator
+                        phiType={phiDetection.description}
+                      />
+                    )}
+                  </Label>
                 {attr.listTitles.length > 0 ? (
                   <RadioGroup
                     id={attr.marker}
@@ -99,7 +115,8 @@ function MainForm({
                 )}
               </CardContent>
             </Card>
-          ))}
+          );
+          })}
           {publicForm ? (
             <div className="space-y-2 w-full flex flex-col">
               <div className="flex items-center justify-between">
